@@ -12,15 +12,9 @@ class TimeoutHasExpired extends ThreadsNodeError {
     }
 }
 
-class InternalTimeoutHasExpired extends ThreadsNodeError {
-    constructor() {
-        super('Internal timeout has expired')
-    }
-}
-
 class DeathBeforeInitialization extends ThreadsNodeError {
-    constructor(name, number) {
-        super(`The worker ${name} number ${number} died before the initialization process was completed`)
+    constructor(name, number, code) {
+        super(`The worker ${name} number ${number} died before the initialization process was completed. Exit code ${code}`)
     }
 }
 
@@ -30,53 +24,42 @@ class FailedRevive extends ThreadsNodeError {
     }
 }
 
-class WorkerNotActive extends ThreadsNodeError {
+class ThreadNotActive extends ThreadsNodeError {
     constructor() {
         super(`The current worker is not active`)
     }
 }
 
-class WorkerNotExist extends ThreadsNodeError {
-    constructor(message) {
-        super(message)
+class ThreadNotExist extends ThreadsNodeError {
+    constructor() {
+        super('Worker Not Exist')
     }
 }
 
-class ThreadExit extends ThreadsNodeError {
-    constructor(name, number, code) {
-        super(`Worker ${name} number ${number} has stopped. Exit code ${code}`)
-        this.workerName = name
-        this.workerNumber = number
-        this.exitCode = code
-    }
-}
+// class ExceededDeathsCount extends ThreadsNodeError {
+//     constructor(name, number, numberDeaths, numberDeathsAll, duration) {
+//         super(`The worker ${name} number ${number} died ${numberDeaths} in a period of ${duration} ms. Total number of deaths for all time ${numberDeathsAll}.`)
+//         this.name = name
+//         this.number = number
+//         this.numberDeaths = numberDeaths
+//         this.numberDeathsAll = numberDeathsAll
+//     }
+// }
 
-class ExceededDeathsCount extends ThreadsNodeError {
-    constructor(name, number, numberDeaths, numberDeathsAll, duration) {
-        super(`The worker ${name} number ${number} died ${numberDeaths} in a period of ${duration} ms. Total number of deaths for all time ${numberDeathsAll}.`)
-        this.workerName = name
-        this.workerNumber = number
-        this.numberDeaths = numberDeaths
-        this.numberDeathsAll = numberDeathsAll
-    }
-}
-
-class ExceededDelayStartWorker extends ThreadsNodeError {
-    constructor(name, number, delay) {
-        super(`Exceeded the delay for the start of the worker ${name} number ${name}. Parameter delayStartingWorker ${delay} ms`)
-        this.workerName = name
-        this.workerNumber = number
-    }
-}
+// class ExceededDelayStartThread extends ThreadsNodeError {
+//     constructor(name, number, delay) {
+//         super(`Exceeded the delay for the start of the worker ${name} number ${name}. Parameter delayStartingWorker ${delay} ms`)
+//         this.name = name
+//         this.number = number
+//     }
+// }
 
 
 module.exports = ThreadsNodeError
 module.exports.TimeoutHasExpired = TimeoutHasExpired
-module.exports.InternalTimeoutHasExpired = InternalTimeoutHasExpired
 module.exports.DeathBeforeInitialization = DeathBeforeInitialization
 module.exports.FailedRevive = FailedRevive
-module.exports.WorkerNotActive = WorkerNotActive
-module.exports.WorkerNotExist = WorkerNotExist
-module.exports.ThreadExit = ThreadExit
-module.exports.ExceededDeathsCount = ExceededDeathsCount
-module.exports.ExceededDelayStartWorker = ExceededDelayStartWorker
+module.exports.ThreadNotActive = ThreadNotActive
+module.exports.ThreadNotExist = ThreadNotExist
+// module.exports.ExceededDeathsCount = ExceededDeathsCount
+// module.exports.ExceededDelayStartWorker = ExceededDelayStartThread

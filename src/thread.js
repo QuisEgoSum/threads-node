@@ -1,140 +1,81 @@
 const EventEmitter = require('events').EventEmitter
-const {WorkerNotExist} = require('./error')
+const {isMainThread, workerData, parentPort} = require('worker_threads')
+const Channels = require('./channels')
+const {ThreadNotExist} = require('./error')
 
 
-class Thread {
-    
-    constructor() {
+/**
+ * @typedef ThreadOptions
+ * @type {Object}
+ * @property {*} [data]
+ * @property {Map.<string, Map.<number, MessagePort>>} options.ports
+ * @property {import('./main-thread').ChannelOptions} options.channelOptions
+ * @property {{name: String, number: Number}} options.options
+ */
 
-        this.inited = false
-
-        /** @type {Map.<string, Map.<Number, import('./worker-wrapper')|import('./channel')>>} */
-        this._workers = new Map()
-
-        /** @type {EventEmitter} */
-        this._emitter = new EventEmitter()
-    }
-
-    /**
-     * An alternative to subscribing to the "init" event.
-     * @returns {Promise.<Worker>}
-     */
-    init() {
-        return new Promise(resolve => this.inited ? resolve(this) : this.once('init', () => resolve(this)))
-    }
+class Thread extends EventEmitter {
 
     /**
-     * @param  {String} event
-     * @param {Function} listener
+     * @param {ThreadOptions} options 
      */
-    on(event, listener) {
-        this._emitter.on(event, listener)
-        return this
-    }
+    constructor(cord, options) {
+        super()
 
-    /**
-     * @param  {String} event
-     * @param {Function} listener
-     */
-    once(event, listener) {
-        this._emitter.once(event, listener)
-        return this
-    }
+        this.data = options.data
 
-    /** @param {String|Symbol} event  @param {Function} listener */
-    removeListener(event, listener) {
-        this._emitter.removeListener(event, listener)
-        return this
-    }
+        this._options = options.options
 
-    /** @param {String} event */
-    removeAllListeners(event) {
-        this._emitter.removeAllListeners(event)
-        return this
-    }
+        this._tire = this.emit.bind(this)
+        this.emit = undefined
 
-    /**
-     * Returns an object for sending messages to the worker or workers from the group by the specified name. 
-     * You can specify the number of a specific worker, the workers are numbered starting with the number 1.
-     * If there is no worker with this name or number, it will throw an error.
-     * 
-     * @param {String} name 
-     * @param {Number} [target] Number worker. -1 - send any; 0 - send all. [-1, 0] - post any. default 0
-     */
-    to(name, target = 0) {
+        /** @type {Map.<string, Channels>} */
+        this.channels = new Map()
 
-        if (!this._workers.has(name))
-            throw new WorkerNotExist(`This workers ${name} doesn't exist`)
+        this.channels.set('main', new Channels(this._tire, options.channelOptions).init('main', new Map([[1, cord]]), true))
 
-        const channelsWorkers = this._workers.get(name)
-
-        if (channelsWorkers.size < target)
-            throw new WorkerNotExist(`This worker ${name} number ${target} doesn't exist`)
-
-
-        return {
-            /**
-             * For sending messages, when the second argument method "to" is set to -1 - send a message to all workers with the specified name, 0 - to any.
-             * If the recipient does not confirm the receipt (the recipient will do this automatically), the sending will be repeated with the delay specified in the Master constructor(rejectDelaySend) until it receives confirmation.
-             * If the recipient is not active at the time of sending (died and has not yet been revived), the message will wait in the queue until the recipient is revived.
-             * 
-             * @param {String} event 
-             * @param {*} [message] 
-             */
-            send: (event, message) => {
-
-                if (target === 0)
-                    return channelsWorkers.forEach(channelWorker => channelWorker.send(event, message))
-
-                const channelWorker = this._selectWorkerChannel(name, channelsWorkers, target, target === -1)
-
-                return channelWorker.send(event, message)
-
-            },
-            /**
-             * To send a message waiting for a response. "target" value of 0 or -1 to send to anyone.
-             * If the recipient is not active it will throw an error.
-             * If the recipient does not respond within the specified time, the promise will be rejected.
-             * 
-             * @param {String} event 
-             * @param {*} [message] 
-             * @param {Number} [rejectDelay] by default, specified in the Master constructor (rejectDelayPost)
-             * @returns {Promise.<any>}
-             */
-            post: (event, message, rejectDelay) => {
-
-                const channelWorker = this._selectWorkerChannel(name, channelsWorkers, target, (target === 0 || target === -1))
-
-                return channelWorker.post(event, message, rejectDelay)
-            }
+        for (const [name, ports] of options.ports.entries()) {
+            this.channels.set(name, new Channels(this._tire, options.channelOptions).init(name, ports))
         }
     }
 
-    /**
-     * Returns a positive random number in the range from min to max
-     * 
-     * @param {Number} [max] default 1
-     * @param {Number} [min] default 0
-     */
-    _randomInt(max = 1, min = 0) {
-        return Math.abs(Math.round(min - 0.5 + Math.random() * (max - min + 1)))
+    async init() {
+
+        const promises = []
+
+        this.channels.forEach(
+            channels => channels.forEach(
+                /**@param {import('./channel')} channel*/
+                channel => promises.push(channel.init())))
+
+        this.to('main').send(`#init-${this.name}-${this.number}`)
+
+
+        await new Promise(resolve => this.once('#init', resolve))
+
+        this._tire('init')
     }
 
-    _selectWorkerChannel(name, channelsWorkers, number, isRandom) {
+    get name() {
+        return this._options.name
+    }
 
-        if (isRandom)
-            return Array.from(channelsWorkers)[this._randomInt(channelsWorkers.size - 1)][1]
-    
-        const channelWorker = channelsWorkers.get(number)
-    
-        if (!channelWorker)
-            throw new WorkerNotExist(`This worker ${name} number ${number} doesn't exist`)
-    
-        return channelWorker
+    get number() {
+        return this._options.number
+    }
+    /**
+     * @param {String} name 
+     * @param {Number} number 
+     * @returns {Channels}
+     * @throws {ThreadNotExist}
+     */
+    to(name) {
+        if (this.channels.has(name)) {
+            return this.channels.get(name)
+        } else {
+            throw new ThreadNotExist()
+        }
     }
 }
 
 
-
-
-module.exports = Thread
+module.exports = isMainThread ? null : new Thread(parentPort, workerData)

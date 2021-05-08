@@ -1,5 +1,5 @@
 module.exports = {
-    Master: require('./src/master'),
-    worker: require('./src/worker'),
+    MainThread: require('./src/main-thread'),
+    thread: require('./src/thread'),
     Error: require('./src/error')
 }
