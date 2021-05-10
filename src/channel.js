@@ -11,8 +11,6 @@ module.exports = class Channel {
      * @param {{name: String, number: Number}} worker
      */
     constructor(tire, cord, options, active, worker) {
-
-        /** @private */
         this.active = active
         /** @private */
         this._worker = worker
@@ -51,7 +49,6 @@ module.exports = class Channel {
      * @param {MessagePort} cord 
      */
     addListeners(cord) {
-
         this.removeListeners()
 
         this._cord = cord
@@ -126,9 +123,9 @@ module.exports = class Channel {
         }
 
         if (delay === 0) {
-            this._cord.postMessage({event, message, type: 'send', id: messageId, transferList})
+            this._cord.postMessage({event, message, type: 'send', id: messageId}, transferList)
         } else {
-            this._cord.postMessage({event, message, type: 'send', id: messageId, transferList})
+            this._cord.postMessage({event, message, type: 'send', id: messageId}, transferList)
             this._checkQ.set(messageId, {
                 timeout: setTimeout(() => setImmediate(() => {
                     if (this._checkQ.has(messageId)) {

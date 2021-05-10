@@ -37,7 +37,6 @@ class WorkerThread extends Channel {
      * @param {Map.<string, Map.<number, MessagePort>>} ports
      */
     run(ports) {
-
         this.removeListeners()
 
         const transferList = []
@@ -62,13 +61,11 @@ class WorkerThread extends Channel {
     }
 
     setPorts(ports) {
-
         const transferList = []
 
         ports.forEach(_ports => _ports.forEach(port => transferList.push(port)))
 
         this.send('#channels', ports, void 0, void 0, transferList)
-
     }
 
     /**

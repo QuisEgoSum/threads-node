@@ -4,6 +4,9 @@ const {WorkerNotExist, DeathBeforeInitialization} = require('./error')
 const ThreadsPool = require('./thread-pool')
 
 
+const TERMINATE_CODE = 1984
+
+
 /**
  * @typedef ThreadOptions
  * @type {Object}
@@ -43,6 +46,8 @@ class MainThread extends EventEmitter {
 
         const {threads = [], delayPost = 200, delaySend = 200, minReadyStore = 400} = mainThreadOptions
 
+        this.inited = false
+
         /** @private */
         this._channelOptions = {delayPost, delaySend, minReadyStore}
 
@@ -74,7 +79,6 @@ class MainThread extends EventEmitter {
     }
 
     async init() {
-
         if (this.inited)
             return this
 
@@ -118,6 +122,7 @@ class MainThread extends EventEmitter {
 
         this.pools.forEach(pool => {
             pool.init(channels.get(pool.name)).forEach(thread => {
+                /** TODO: Timeout reject */
                 promises.push(new Promise(resolve => this.once(`#init-${thread.name}-${thread.number}`, resolve)))
             })
         })
@@ -152,7 +157,6 @@ class MainThread extends EventEmitter {
     //  * @returns {Array.<Promise>}
     //  */
     // async terminate(maxDelay) {
-
     //     const promises = []
 
     //     this.pools.forEach(pool => promises.push(pool.terminate(maxDelay)))
@@ -164,15 +168,19 @@ class MainThread extends EventEmitter {
      * @private
      * @param {{name: String, number: Number, code: Number}} param0 
      */
-    _exit({name, number, code}) {
+    async _exit({name, number, code}) {
+        if (code === TERMINATE_CODE) {
+            return void 0
+        }
+
         if (!this.inited) {
-            throw new DeathBeforeInitialization(name, number, code)
+            this._tire('error', new DeathBeforeInitialization(name, number, code))
         }
 
         const pool = this.pools.get(name)
 
         /** @type {Map.<string, Map.<number, Map.<string, Map.<number, MessagePort>>>>} */
-        const channels = new Map()
+        const channels = new Map([[name, new Map([[number, new Map()]])]])
 
         pool.messages.forEach(name => channels.set(name, 
             new Map(
@@ -206,15 +214,17 @@ class MainThread extends EventEmitter {
         channels.forEach((channels, currentName) => {
             if (currentName === name) return void 0
             const currentPool = this.pools.get(currentName)
-            channels.forEach((channels, number) => {
-                currentPool.get(number)
+            channels.forEach((_, number) => {
+                currentPool.get(number).setPorts(channels.get(number))
             })
-
         })
 
+        this.pools.get(name).get(number).run(channels.get(name).get(number))
 
+        await new Promise(resolve => this.once(`#init-${name}-${number}`, resolve))
+
+        this.pools.get(name).get(number).send('#init')
     }
-
 
     /**
      * @private
@@ -247,7 +257,6 @@ class MainThread extends EventEmitter {
                     if (!nextThreadOptions.messages.includes(threadOptions.name))
                         nextThreadOptions.messages.push(threadOptions.name)
                 } else {
-                    console.log('splice', name)
                     threadOptions.messages.splice(i, 1)
                     i--
                 }

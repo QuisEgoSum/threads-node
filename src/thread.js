@@ -20,6 +20,8 @@ class Thread extends EventEmitter {
      */
     constructor(cord, options) {
         super()
+        
+        this.inited = false
 
         this.data = options.data
 
@@ -36,10 +38,17 @@ class Thread extends EventEmitter {
         for (const [name, ports] of options.ports.entries()) {
             this.channels.set(name, new Channels(this._tire, options.channelOptions).init(name, ports))
         }
+
+        this.on('#channels', ports => {
+            ports.forEach((ports, name) => {
+                ports.forEach((port, number) => {
+                    this.channels.get(name).get(number).addListeners(port)
+                })
+            })
+        })
     }
 
     async init() {
-
         const promises = []
 
         this.channels.forEach(
@@ -49,9 +58,9 @@ class Thread extends EventEmitter {
 
         this.to('main').send(`#init-${this.name}-${this.number}`)
 
-
         await new Promise(resolve => this.once('#init', resolve))
 
+        this.inited = true
         this._tire('init')
     }
 

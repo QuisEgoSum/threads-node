@@ -1,4 +1,4 @@
-const {MainThread} = require('../index')
+const {MainThread, Error: ThreadError} = require('../index')
 const {getTime} = require('./helper')
 
 
@@ -14,7 +14,13 @@ async function main() {
         delaySend: 1000,
         delayPost: 1000
     })
-        .on('error', console.error)
+        .on('error', error => {
+            console.error(error)
+            if (error instanceof ThreadError.DeathBeforeInitialization) {
+                // thread.terminate
+                process.exit(1)
+            }
+        })
         .on('exit', console.log)
         .init()
 
@@ -28,7 +34,7 @@ async function main() {
         .then(answer => console.log(`[MASTER][${getTime()}][ANSWER]`, answer))
         .catch(error => console.error(`[MASTER][${getTime()}][ANSWER]`, error))
 
-    // thread.to('second').send('err')
+    thread.to('second').send('err')
 
     process.on('SIGINT', async () => {
         
