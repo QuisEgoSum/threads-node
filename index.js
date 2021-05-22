@@ -1,5 +1,8 @@
+const {isMainThread, workerData, parentPort} = require('worker_threads')
+
+
 module.exports = {
-    MainThread: require('./src/main-thread'),
-    thread: require('./src/thread'),
-    Error: require('./src/error')
+    Error: require('./src/Error'),
+    MainThread: isMainThread ? require('./src/MainThread') : null,
+    thread: isMainThread ? null : new (require('./src/Thread'))(workerData, parentPort)
 }
