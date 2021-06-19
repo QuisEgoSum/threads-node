@@ -14,6 +14,7 @@ class Master extends Thread {
      * @property {Number} [numberOfInstance] Number of workers
      * @property {Array.<String>} [messages] Names of worker groups for channel exchange
      * @property {any} [workerData]
+     * @property {*} [options]
      * 
      * @param {Object} configuration
      * @param {WorkerOptionsConstructor[]} configuration.workers
@@ -115,13 +116,13 @@ class Master extends Thread {
 
         /** Creating a configuration object to pass to the worker. Exchange of channels. */
 
-        for (const {name, numberOfInstance, messages, isExchangeRelated, entry, workerData} of this._optionsWorkers) {
+        for (const {name, numberOfInstance, messages, isExchangeRelated, entry, workerData, options: workerOptions} of this._optionsWorkers) {
 
             options[name] = {}
             const workers = new Map()
             for (let number = 1; number <= numberOfInstance; number++) {
                 options[name][number] = new WorkerOptions(name, number, messages, workerData, this._delayOptions)
-                workers.set(number, new WorkerWrapper(this, this._emitter, name, number, entry, {...this._delayOptions, ...otherOptions}))
+                workers.set(number, new WorkerWrapper(this, this._emitter, name, number, entry, {...this._delayOptions, ...otherOptions}, workerOptions))
             }
 
             /** Exchange of channels between related workers, if necessary. */

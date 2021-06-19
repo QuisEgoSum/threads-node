@@ -32,6 +32,8 @@ class Channel {
         /** @type {Array.<{event: String, message: any}>} */
         this._queueSend = []
 
+        this._queueReady = new Map()
+
         /** @type {EventEmitter} */
         this._emitter = emitter
 
@@ -184,7 +186,14 @@ class Channel {
     /** @param {Message} message  */
     _send({event, message, messageId}) {
         this._port.postMessage({type: 'check', messageId})
-        this._emitter.emit(event, message, {from: {name: this.name, number: this.number}})
+        if (!this._queueReady.has(messageId)) {
+            this._queueReady.set(messageId, {
+                timeout: setTimeout(() => {
+                    this._queueReady.delete(messageId)
+                }, 15000)
+            })
+            this._emitter.emit(event, message, {from: {name: this.name, number: this.number}})
+        }
     }
 
     /** @param {Message} message  */

@@ -23,12 +23,14 @@ class WorkerWrapper extends Channel {
             numberDeathsForTerminateProcess,
             durationDeathCountTime,
             delayStartingWorker
-        }
+        },
+        workerOptions
     ) {
 
         super(name, number, emitter, rejectDelaySend, rejectDelayPost, internalRejectDelay)
 
         this._master = master
+        this.workerOptions = workerOptions || ({})
 
         /**
          * @type {Map.<string, {resolve: Function, timeout: setTimeout}>}
@@ -56,7 +58,7 @@ class WorkerWrapper extends Channel {
 
         workerData.deaths = this._deathCounter
 
-        this.worker = new Worker(this._entry, {workerData, transferList})
+        this.worker = new Worker(this._entry, {...this.workerOptions, workerData, transferList})
 
         this.updatePort(masterPort)
 
