@@ -4,26 +4,25 @@ const Channel = require('./Channel')
 class ChannelNode extends Map {
 
     /**
-     * @param {Map.<Number, MessagePort>} node
-     * @param {*} options 
-     * @param {*} root 
+     * @param {import('./MainThread').ChannelNodeOptions} nodeOptions 
+     * @param {import('./Thread')} root 
      */
-    constructor(name, node, options, root) {
+    constructor(nodeOptions, root) {
         super()
 
-        this.name = name
-
-        const getRecipient = (number) => ({name, number})
-
-        node
-            .forEach(
-                (port, number) => this
-                    .set(number, new Channel(options, getRecipient(number), root)
-                        .addListeners(port))
-            )
+        this._options = nodeOptions
+        this._root = root
     }
 
-    init() {}
+    _init() {
+        for (let number = 1; number <= this._options.number; number++) {
+            this.set(new Channel(this._options.delay, {number, name: this._options.name}, this._root))
+        }
+    }
+
+    init() {
+
+    }
 
     post(message, options) {}
 

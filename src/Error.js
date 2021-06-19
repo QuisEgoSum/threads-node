@@ -18,3 +18,10 @@ ThreadError.BadOptions = class BadOptions extends ThreadError {
     }
 }
 
+ThreadError.ThreadDeath = class ThreadDeath extends ThreadError {
+    constructor(code, name, number) {
+        super(`The thread finished its execution with code ${code}`)
+        this.pool = name
+        this.thread = number
+    }
+}

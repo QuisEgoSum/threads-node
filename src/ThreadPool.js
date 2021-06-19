@@ -5,6 +5,10 @@ class ThreadPool extends ChannelNode {
     constructor() {
         super()
     }
+
+    init() {}
+
+    terminate() {}
 }
 
 

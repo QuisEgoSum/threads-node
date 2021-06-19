@@ -4,7 +4,14 @@ const Channel = require('./Channel')
 
 class WorkerThread extends Channel {
     constructor() {
+        super()
+    }
 
+    /**
+     * @override
+     */
+    init() {
+        
     }
 }
 

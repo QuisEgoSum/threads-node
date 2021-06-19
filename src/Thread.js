@@ -12,7 +12,7 @@ const ThreadOptions = require('./ThreadOptions')
  */
 
 
-class Thread extends EventEmitter{
+class Thread extends EventEmitter {
     /**
      * @param {OptionsThread} options 
      * @param {MessagePort} mainPort
