@@ -1,4 +1,5 @@
 const {createId} = require('./utils')
+const ThreadError = require('./Error')
 
 
 /**
@@ -62,6 +63,21 @@ const {createId} = require('./utils')
  * @property {Number} [delay]
  * @property {String} [messageId]
  * @property {Array.<MessagePort>} [transferList]
+ * 
+ * @typedef SendMessage
+ * @type {Object}
+ * @property {String} id
+ * @property {'send'} type
+ * @property {String} event
+ * @property {any} msg
+ * @property {Boolean} confirm
+ * 
+ * @typedef PostMessage
+ * @type {Object}
+ * @property {String} id
+ * @property {'post'} type
+ * @property {String} event
+ * @property {any} [msg]
  */
 
 
@@ -156,6 +172,8 @@ class Channel {
         options.delay = options.delay ?? this.delay.send
         options.messageId = options.messageId || createId()
 
+        const confirm = options.delay === 0
+
         if (!this.active) {
             if (options.delay !== 0) {
                 this.sendQ.push(
@@ -179,11 +197,13 @@ class Channel {
                 id: options.messageId,
                 type: this.MESSAGE_TYPE.SEND,
                 event: event,
-                msg: msg
-            }
+                msg: msg,
+                confirm: confirm
+            },
+            options.transferList
         )
 
-        if (options.delay > 0) {
+        if (confirm) {
             this.checkQ.set(options.messageId, 
                 {
                     timeout: setTimeout(
@@ -199,7 +219,8 @@ class Channel {
                                     )
                                 }
                             }
-                        )
+                        ),
+                        options.delay
                     )
                 }
             )
@@ -214,7 +235,46 @@ class Channel {
      * @param {Message} msg 
      * @param {PostMessageOptions} options 
      */
-    post(event, msg, options) {}
+    post(event, msg, options) {
+        return new Promise((resolve, reject) => {
+
+            if (!this.active) {
+                return reject(new ThreadError.ThreadNotActive(this.addressee.name, this.addressee.number))
+            }
+
+            options.delay = options.delay ?? this.delay.send
+            options.messageId = options.messageId || createId()
+
+            this.port.postMessage(
+                {
+                    id: options.messageId,
+                    type: this.MESSAGE_TYPE.POST,
+                    event: event,
+                    msg: msg,
+                },
+                options.transferList
+            )
+
+            this.answerQ.set(options.messageId,
+                {
+                    resolve,
+                    timeout: setTimeout(
+                        () => setImmediate(
+                            () => {
+                                if (this.answerQ.has(options.messageId)) {
+                                    this.answerQ.delete(options.messageId)
+                                    return reject(new ThreadError.TimeoutHasExpired())
+                                }
+                            }
+                        ),
+                        options.delay
+                    )
+                }
+            )
+
+            msg = null
+        })
+    }
 
     /**
      * @param {MessagePort} port 
@@ -267,11 +327,13 @@ class Channel {
 
     /**
      * @private
+     * @param {SendMessage} msg
      */
     onSend(msg) {}
 
     /**
      * @private
+     * @param {PostMessage} msg
      */
     onPost(msg) {}
 
