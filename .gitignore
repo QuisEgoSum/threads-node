@@ -3,3 +3,4 @@ package.json
 note.txt
 .gitignore
 docs/
+.idea/

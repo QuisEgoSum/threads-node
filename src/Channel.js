@@ -1,3 +1,4 @@
+const {createId} = require('./utils')
 
 
 /**
@@ -8,149 +9,281 @@
  * @property {String} name
  * @property {Number} number
  * 
+ * @typedef ChannelOptions
+ * @type {Object}
+ * @property {Addressee} addressee
+ * @property {import('./MainThread').OptionsDelay} delay
+ * @property {import('./AThread')} root
+ * 
  * @typedef SendQItem
  * @type {Object}
  * @property {MessageId} id 
- * @property {*} [message]
+ * @property {any} [msg]
  * @property {String} event 
  * @property {Number} delay 
  * @property {Array.<MessagePort>} [transferList]
  * 
  * @typedef SendQ
- * @type {Array}
+ * @type {Array.<SendQItem>}
  * 
  * @typedef CheckQItem
  * @type {Object}
- * @property {setTimeout} timeout
+ * @property {NodeJS.Timeout} timeout
  * 
  * @typedef {Map.<MessageId, CheckQItem>} CheckQ
  * 
+ * @callback ResolveCallback
+ * @param {any} [answer]
+ *
  * @typedef AnswerQItem
  * @type {Object}
- * @property {setTimeout} timeout
- * @property {Fuction} resolve promise resolve function
+ * @property {NodeJS.Timeout} timeout
+ * @property {ResolveCallback} resolve promise resolve function
  * 
- * @typedef {Map.<MessageId>} AnswerQ
+ * @typedef {Map.<MessageId, AnswerQItem>} AnswerQ
  * 
  * @typedef ReadyQItem
  * @type {Object}
- * @property {setTimeout} timeout
+ * @property {NodeJS.Timeout} timeout
  * 
  * @typedef {Map.<MessageId, ReadyQItem>} ReadyQ
+ * 
+ * @typedef {any} Message
+ * @typedef {String} MessageEvent
+ * 
+ * @typedef SendMessageOptions
+ * @type {Object}
+ * @property {Number} [delay]
+ * @property {String} [messageId]
+ * @property {Array.<MessagePort>} [transferList]
+ * 
+ * @typedef PostMessageOptions
+ * @type {Object}
+ * @property {Number} [delay]
+ * @property {String} [messageId]
+ * @property {Array.<MessagePort>} [transferList]
  */
 
 
 class Channel {
 
     /**
-     * @param {import('./MainThread').OptionsDelay} options 
-     * @param {Addressee} addressee 
-     * @param {import('./Thread')} root 
+     * 
+     * @param {ChannelOptions} param0 
      */
-    constructor(options, addressee, root) {
+    constructor({delay, addressee, root}) {
         this.active = false
+
+        this.MESSAGE_TYPE = {
+            SEND: 'send',
+            POST: 'post',
+            ANSWER: 'answer',
+            CHECK: 'check'
+        }
         /**
+         * @callback OnEvent
+         * @param {String} event
+         * @param {Function} callback
+         * 
          * @private
          * @type {MessagePort}
          */
-        this._port = null
-
-        /**
-         * @private
-         * @type {import('./Thread')}
-         */
-        this._root = root
+        this.port = null
 
         /**
          * @private
          */
-        this._options = options
+        this.root = root
 
         /**
          * @private
          */
-        this._addressee = addressee
+        this.delay = delay
+
+        /**
+         * @private
+         */
+        this.addressee = addressee
 
         /**
          * @private
          * @type {SendQ}
          */
-        this._sendQ = new Array()
+        this.sendQ = new Array()
 
         /**
          * @private
          * @type {CheckQ}
          */
-        this._checkQ = new Map()
+        this.checkQ = new Map()
 
         /**
          * @private
          * @type {AnswerQ}
          */
-        this._answerQ = new Map()
+        this.answerQ = new Map()
 
         /**
          * @private
          * @type {ReadyQ}
          */
-        this._readyQ = new Map()
+        this.readyQ = new Map()
+
+        this.answerQ.get('s').resolve()
+
+        /**
+         * @private
+         */
+        this.messageListener = (msg) => this.onMessage(msg)
+
+        /**
+         * @private
+         */
+        this.closedListener = () => void (this.active = false)
     }
 
     init() {}
 
-    send(msg, options) {}
+    /**
+     * 
+     * @param {MessageEvent} event 
+     * @param {Message} msg 
+     * @param {SendMessageOptions} options 
+     * @returns {Number}
+     */
+    send(event, msg, options) {
 
-    post(msg, options) {}
+        options.delay = options.delay ?? this.delay.send
+        options.messageId = options.messageId || createId()
 
-    addListeners(port) {
+        if (!this.active) {
+            if (options.delay !== 0) {
+                this.sendQ.push(
+                    {
+                        id: options.messageId,
+                        msg: msg,
+                        event: event,
+                        transferList: options.transferList,
+                        delay: options.delay
+                    }
+                )
+
+                return 2
+            }
+
+            return 0
+        }
+
+        this.port.postMessage(
+            {
+                id: options.messageId,
+                type: this.MESSAGE_TYPE.SEND,
+                event: event,
+                msg: msg
+            }
+        )
+
+        if (options.delay > 0) {
+            this.checkQ.set(options.messageId, 
+                {
+                    timeout: setTimeout(
+                        () => setImmediate(
+                            () => {
+                                if (this.checkQ.has(options.messageId)) {
+                                    process.nextTick(
+                                        () => this.send(
+                                            event,
+                                            msg,
+                                            options
+                                        )
+                                    )
+                                }
+                            }
+                        )
+                    )
+                }
+            )
+        }
+
+        return 1
+    }
+
+    /**
+     * 
+     * @param {String} event 
+     * @param {Message} msg 
+     * @param {PostMessageOptions} options 
+     */
+    post(event, msg, options) {}
+
+    /**
+     * @param {MessagePort} port 
+     * @returns {Channel}
+     */
+    setPort(port) {
+        this.port = port
+
+        //@ts-ignore
+        this.port.on('message', this.messageListener)
+        //@ts-ignore
+        this.port.on('close', this.closedListener)
+
         return this
     }
 
+    /**
+     * @returns {Channel}
+     */
     removeListeners() {
-        if (this._port) {
-            ;['close'].forEach(event => this._port.removeAllListeners(event))
+        if (this.port) {
+            this.port.removeEventListener('close',   this.closedListener)
+            if (this.messageListener) {
+                this.port.removeEventListener('message', this.messageListener)
+            }
         }
+
+        return this
     }
 
     /**
      * @private
      */
-    _check() {}
+    check() {}
 
     /**
      * @private
      */
-    _answer() {}
+    answer() {}
 
     /**
      * @private
      */
-    _onMessage(msg) {}
+    onMessage(msg) {}
 
     /**
      * @private
      */
-    _onInit(msg) {}
+    onInit(msg) {}
 
     /**
      * @private
      */
-    _onSend(msg) {}
+    onSend(msg) {}
 
     /**
      * @private
      */
-    _onPost(msg) {}
+    onPost(msg) {}
 
     /**
      * @private
      */
-    _onAnswer(msg) {}
+    onAnswer(msg) {}
 
     /**
      * @private
      */
-    _onCheck(msg) {}
+    onCheck(msg) {}
 }
 
 
