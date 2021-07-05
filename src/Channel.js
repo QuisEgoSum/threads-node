@@ -95,6 +95,18 @@ const ThreadError = require('./Error')
  * @property {'post'} POST
  * @property {'answer'} ANSWER
  * @property {'confirm'} CONFIRM
+ * 
+ * @typedef SendHandlerCtx
+ * @type {Object}
+ * @property {Addressee} from
+ * 
+ * @callback PostAnswerCallback
+ * @param {any} msg
+ * 
+ * @typedef PostHandlerCtx
+ * @type {Object}
+ * @property {Addressee} from
+ * @property {PostAnswerCallback} answer
  */
 
 
@@ -325,13 +337,47 @@ class Channel {
 
     /**
      * @private
+     * @param {String} messageId
+     * @param {Number} [confirmDuration]
+     * @returns {Boolean} it has already been delivered
      */
-    confirm() {}
+    confirm(messageId, confirmDuration) {
+        this.port.postMessage(
+            {
+                id: messageId,
+                type: this.MESSAGE_TYPE.CONFIRM
+            }
+        )
+
+        if (this.readyQ.has(messageId)) {
+            return true
+        }
+
+        this.readyQ.set(messageId,
+            {
+                timeout: setTimeout(
+                    () => this.readyQ.delete(messageId), confirmDuration ?? this.delay.ready
+                )
+            }
+        )
+
+        return false
+    }
 
     /**
      * @private
+     * @param {String} messageId
+     * @param {any} msg
      */
-    answer() {}
+    answer(messageId, msg) {
+        this.port.postMessage(
+            {
+                id: messageId,
+                type: this.MESSAGE_TYPE.ANSWER,
+                msg: msg
+            }
+        )
+    }
 
     /**
      * @private
@@ -359,38 +405,33 @@ class Channel {
      */
     onSend(msg) {
         if (msg.confirm) {
-            this.port.postMessage(
-                {
-                    id: msg.id,
-                    type: this.MESSAGE_TYPE.CONFIRM
-                }
-            )
+            const hasBeenDelivered = this.confirm(msg.id, msg.confirmDuration)
 
-            if (this.readyQ.has(msg.id)) {
+            if (hasBeenDelivered) {
                 return void 0
             }
-    
-            const messageId = msg.id
-    
-            this.readyQ.set(msg.id,
-                {
-                    timeout: setTimeout(
-                        () => this.readyQ.delete(messageId), msg.confirmDuration ?? this.delay.ready
-                    )
-                }
-            )
         }
 
-        this.root.emit(msg.event, msg.msg)
-
-        msg = null
+        this.root.emit(msg.event, msg.msg, {from: this.addressee})
     }
 
     /**
      * @private
      * @param {PostMessage} msg
      */
-    onPost(msg) {}
+    onPost(msg) {
+        this.root.emit(msg.event, 
+            msg.msg,
+            {
+                from: this.addressee,
+                /**
+                 * @param {any} msg 
+                 * @returns {void}
+                 */
+                answer: msg => this.answer(msg.id, msg)
+            }
+        )
+    }
 
     /**
      * @private
