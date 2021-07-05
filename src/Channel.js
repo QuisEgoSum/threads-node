@@ -358,7 +358,6 @@ class Channel {
      * @param {SendMessage} msg
      */
     onSend(msg) {
-        
         if (msg.confirm) {
             this.port.postMessage(
                 {
@@ -366,7 +365,25 @@ class Channel {
                     type: this.MESSAGE_TYPE.CONFIRM
                 }
             )
+
+            if (this.readyQ.has(msg.id)) {
+                return void 0
+            }
+    
+            const messageId = msg.id
+    
+            this.readyQ.set(msg.id,
+                {
+                    timeout: setTimeout(
+                        () => this.readyQ.delete(messageId), msg.confirmDuration ?? this.delay.ready
+                    )
+                }
+            )
         }
+
+        this.root.emit(msg.event, msg.msg)
+
+        msg = null
     }
 
     /**
