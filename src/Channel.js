@@ -10,10 +10,17 @@ const ThreadError = require('./Error')
  * @property {String} name
  * @property {Number} number
  * 
+ * @typedef ChannelDelayOptions
+ * @type {Object}
+ * @property {Number} send
+ * @property {Number} post
+ * @property {Number} ready
+ * @property {Number} init
+ * 
  * @typedef ChannelOptions
  * @type {Object}
  * @property {Addressee} addressee
- * @property {import('./MainThread').OptionsDelay} delay
+ * @property {ChannelDelayOptions} delay
  * @property {import('./Thread')} root
  * 
  * @typedef SendQItem
@@ -93,7 +100,12 @@ const ThreadError = require('./Error')
  * @property {'answer'} type
  * @property {any} msg
  * 
- * @typedef {SendMessage|PostMessage|AnswerMessage|ConfirmMessage} MessageObject
+ * @typedef InitMessage
+ * @type {Object}
+ * @property {String} id
+ * @property {'init'} type
+ * 
+ * @typedef {SendMessage|PostMessage|AnswerMessage|ConfirmMessage|InitMessage} MessageObject
  * 
  * @typedef MESSAGE_TYPE
  * @type {Object}
@@ -101,6 +113,7 @@ const ThreadError = require('./Error')
  * @property {'post'} POST
  * @property {'answer'} ANSWER
  * @property {'confirm'} CONFIRM
+ * @property {'init'} INIT
  * 
  * @typedef SendHandlerCtx
  * @type {Object}
@@ -130,7 +143,8 @@ class Channel {
             SEND: 'send',
             POST: 'post',
             ANSWER: 'answer',
-            CONFIRM: 'confirm'
+            CONFIRM: 'confirm',
+            INIT: 'init'
         }
 
         /**
@@ -191,7 +205,35 @@ class Channel {
         // this.root.on(`#channel-init`, () => this.init())
     }
 
-    init() {}
+    init() {
+        const messageId = createId()
+
+        this.port.postMessage(
+            {
+                id: messageId,
+                type: this.MESSAGE_TYPE.INIT
+            }
+        )
+
+        return new Promise((resolve, reject) => {
+            this.answerQ.set(messageId,
+                {
+                    resolve,
+                    timeout: setTimeout(
+                        () => setImmediate(
+                            () => {
+                                if (this.answerQ.has(messageId)) {
+                                    this.answerQ.delete(messageId)
+                                    reject(new ThreadError.TimeoutHasExpired())
+                                }
+                            }
+                        ),
+                        this.delay.init
+                    )
+                }
+            )
+        })
+    }
 
     /**
      * @param {MessagePort} port 
@@ -398,6 +440,8 @@ class Channel {
                 return this.onAnswer(msg)
             case this.MESSAGE_TYPE.CONFIRM:
                 return this.onConfirm(msg)
+            case this.MESSAGE_TYPE.INIT:
+                return this.onInit(msg)
             default:
                 return void 0
         }
@@ -405,8 +449,41 @@ class Channel {
 
     /**
      * @private
+     * @param {InitMessage} msg
      */
-    onInit(msg) {}
+    onInit(msg) {
+        this.active = true
+
+        this.port.postMessage(
+            {
+                id: msg.id,
+                type: this.MESSAGE_TYPE.INIT
+            }
+        )
+
+        setImmediate(
+            () => {
+                if (this.sendQ.length) {
+                    const sendQ = [...this.sendQ]
+
+                    this.sendQ.length = 0
+
+                    sendQ.forEach(
+                        sendQItem => this.send(
+                            sendQItem.event,
+                            sendQItem.msg,
+                            {
+                                messageId: sendQItem.id,
+                                retryDelay: sendQItem.retryDelay,
+                                confirmDuration: sendQItem.confirmDuration,
+                                transferList: sendQItem.transferList,
+                            }
+                        )
+                    )
+                }
+            }
+        )
+    }
 
     /**
      * @private
