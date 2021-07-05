@@ -87,7 +87,13 @@ const ThreadError = require('./Error')
  * @property {String} id
  * @property {'confirm'} type
  * 
- * @typedef {SendMessage|PostMessage} MessageObject
+ * @typedef AnswerMessage
+ * @type {Object}
+ * @property {String} id
+ * @property {'answer'} type
+ * @property {any} msg
+ * 
+ * @typedef {SendMessage|PostMessage|AnswerMessage|ConfirmMessage} MessageObject
  * 
  * @typedef MESSAGE_TYPE
  * @type {Object}
@@ -288,7 +294,6 @@ class Channel {
     }
 
     /**
-     * 
      * @param {String} event 
      * @param {Message} msg 
      * @param {PostMessageOptions} options 
@@ -389,6 +394,10 @@ class Channel {
                 return this.onSend(msg)
             case this.MESSAGE_TYPE.POST:
                 return this.onPost(msg)
+            case this.MESSAGE_TYPE.ANSWER:
+                return this.onAnswer(msg)
+            case this.MESSAGE_TYPE.CONFIRM:
+                return this.onConfirm(msg)
             default:
                 return void 0
         }
@@ -435,13 +444,33 @@ class Channel {
 
     /**
      * @private
+     * @param {AnswerMessage} msg
      */
-    onAnswer(msg) {}
+    onAnswer(msg) {
+        if (this.answerQ.has(msg.id)) {
+            const answerQItem = this.answerQ.get(msg.id)
+
+            this.answerQ.delete(msg.id)
+            
+            clearTimeout(answerQItem.timeout)
+
+            answerQItem.resolve(msg.msg)
+        }
+    }
 
     /**
      * @private
+     * @param {ConfirmMessage} msg
      */
-    onConfirm(msg) {}
+    onConfirm(msg) {
+        if (this.confirmQ.has(msg.id)) {
+            const confirmQItem = this.confirmQ.get(msg.id)
+
+            this.confirmQ.delete(msg.id)
+
+            clearTimeout(confirmQItem.timeout)
+        }
+    }
 }
 
 
