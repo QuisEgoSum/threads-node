@@ -14,24 +14,25 @@ const ThreadError = require('./Error')
  * @type {Object}
  * @property {Addressee} addressee
  * @property {import('./MainThread').OptionsDelay} delay
- * @property {import('./AThread')} root
+ * @property {import('./Thread')} root
  * 
  * @typedef SendQItem
  * @type {Object}
  * @property {MessageId} id 
  * @property {any} [msg]
  * @property {String} event 
- * @property {Number} delay 
+ * @property {Number} [retryDelay]
+ * @property {Number} [confirmDuration]
  * @property {Array.<MessagePort>} [transferList]
  * 
  * @typedef SendQ
  * @type {Array.<SendQItem>}
  * 
- * @typedef CheckQItem
+ * @typedef ConfirmQItem
  * @type {Object}
  * @property {NodeJS.Timeout} timeout
  * 
- * @typedef {Map.<MessageId, CheckQItem>} CheckQ
+ * @typedef {Map.<MessageId, ConfirmQItem>} ConfirmQ
  * 
  * @callback ResolveCallback
  * @param {any} [answer]
@@ -54,13 +55,14 @@ const ThreadError = require('./Error')
  * 
  * @typedef SendMessageOptions
  * @type {Object}
- * @property {Number} [delay]
+ * @property {Number} [retryDelay]
+ * @property {Number} [confirmDuration]
  * @property {String} [messageId]
  * @property {Array.<MessagePort>} [transferList]
  * 
  * @typedef PostMessageOptions
  * @type {Object}
- * @property {Number} [delay]
+ * @property {Number} [rejectDelay]
  * @property {String} [messageId]
  * @property {Array.<MessagePort>} [transferList]
  * 
@@ -71,6 +73,7 @@ const ThreadError = require('./Error')
  * @property {String} event
  * @property {any} msg
  * @property {Boolean} confirm
+ * @property {Number} [confirmDuration]
  * 
  * @typedef PostMessage
  * @type {Object}
@@ -78,29 +81,41 @@ const ThreadError = require('./Error')
  * @property {'post'} type
  * @property {String} event
  * @property {any} [msg]
+ * 
+ * @typedef ConfirmMessage
+ * @type {Object}
+ * @property {String} id
+ * @property {'confirm'} type
+ * 
+ * @typedef {SendMessage|PostMessage} MessageObject
+ * 
+ * @typedef MESSAGE_TYPE
+ * @type {Object}
+ * @property {'send'} SEND
+ * @property {'post'} POST
+ * @property {'answer'} ANSWER
+ * @property {'confirm'} CONFIRM
  */
 
 
 class Channel {
-
     /**
-     * 
-     * @param {ChannelOptions} param0 
+     * @param {ChannelOptions} options 
      */
     constructor({delay, addressee, root}) {
         this.active = false
 
+        /**
+         * @type {MESSAGE_TYPE}
+         */
         this.MESSAGE_TYPE = {
             SEND: 'send',
             POST: 'post',
             ANSWER: 'answer',
-            CHECK: 'check'
+            CONFIRM: 'confirm'
         }
+
         /**
-         * @callback OnEvent
-         * @param {String} event
-         * @param {Function} callback
-         * 
          * @private
          * @type {MessagePort}
          */
@@ -129,9 +144,9 @@ class Channel {
 
         /**
          * @private
-         * @type {CheckQ}
+         * @type {ConfirmQ}
          */
-        this.checkQ = new Map()
+        this.confirmQ = new Map()
 
         /**
          * @private
@@ -145,142 +160,26 @@ class Channel {
          */
         this.readyQ = new Map()
 
-        this.answerQ.get('s').resolve()
-
         /**
          * @private
          */
-        this.messageListener = (msg) => this.onMessage(msg)
+        this.messageListener = msg => this.onMessage(msg)
 
         /**
          * @private
          */
         this.closedListener = () => void (this.active = false)
+
+        // this.root.on(`#channel-init`, () => this.init())
     }
 
     init() {}
 
     /**
-     * 
-     * @param {MessageEvent} event 
-     * @param {Message} msg 
-     * @param {SendMessageOptions} options 
-     * @returns {Number}
-     */
-    send(event, msg, options) {
-
-        options.delay = options.delay ?? this.delay.send
-        options.messageId = options.messageId || createId()
-
-        const confirm = options.delay === 0
-
-        if (!this.active) {
-            if (options.delay !== 0) {
-                this.sendQ.push(
-                    {
-                        id: options.messageId,
-                        msg: msg,
-                        event: event,
-                        transferList: options.transferList,
-                        delay: options.delay
-                    }
-                )
-
-                return 2
-            }
-
-            return 0
-        }
-
-        this.port.postMessage(
-            {
-                id: options.messageId,
-                type: this.MESSAGE_TYPE.SEND,
-                event: event,
-                msg: msg,
-                confirm: confirm
-            },
-            options.transferList
-        )
-
-        if (confirm) {
-            this.checkQ.set(options.messageId, 
-                {
-                    timeout: setTimeout(
-                        () => setImmediate(
-                            () => {
-                                if (this.checkQ.has(options.messageId)) {
-                                    process.nextTick(
-                                        () => this.send(
-                                            event,
-                                            msg,
-                                            options
-                                        )
-                                    )
-                                }
-                            }
-                        ),
-                        options.delay
-                    )
-                }
-            )
-        }
-
-        return 1
-    }
-
-    /**
-     * 
-     * @param {String} event 
-     * @param {Message} msg 
-     * @param {PostMessageOptions} options 
-     */
-    post(event, msg, options) {
-        return new Promise((resolve, reject) => {
-
-            if (!this.active) {
-                return reject(new ThreadError.ThreadNotActive(this.addressee.name, this.addressee.number))
-            }
-
-            options.delay = options.delay ?? this.delay.send
-            options.messageId = options.messageId || createId()
-
-            this.port.postMessage(
-                {
-                    id: options.messageId,
-                    type: this.MESSAGE_TYPE.POST,
-                    event: event,
-                    msg: msg,
-                },
-                options.transferList
-            )
-
-            this.answerQ.set(options.messageId,
-                {
-                    resolve,
-                    timeout: setTimeout(
-                        () => setImmediate(
-                            () => {
-                                if (this.answerQ.has(options.messageId)) {
-                                    this.answerQ.delete(options.messageId)
-                                    return reject(new ThreadError.TimeoutHasExpired())
-                                }
-                            }
-                        ),
-                        options.delay
-                    )
-                }
-            )
-
-            msg = null
-        })
-    }
-
-    /**
      * @param {MessagePort} port 
      * @returns {Channel}
      */
-    setPort(port) {
+     setPort(port) {
         this.port = port
 
         //@ts-ignore
@@ -306,9 +205,128 @@ class Channel {
     }
 
     /**
+     * 
+     * @param {MessageEvent} event 
+     * @param {Message} msg 
+     * @param {SendMessageOptions} options 
+     * @returns {Number}
+     */
+    send(event, msg, options) {
+
+        const retryDelay = options.retryDelay ?? this.delay.send
+        options.messageId = options.messageId || createId()
+
+        const confirm = retryDelay === 0
+
+        if (!this.active) {
+            if (confirm) {
+                this.sendQ.push(
+                    {
+                        id: options.messageId,
+                        msg: msg,
+                        event: event,
+                        transferList: options.transferList,
+                        retryDelay: options.retryDelay,
+                        confirmDuration: options.confirmDuration
+                    }
+                )
+
+                return 2
+            }
+
+            return 0
+        }
+
+        this.port.postMessage(
+            {
+                id: options.messageId,
+                type: this.MESSAGE_TYPE.SEND,
+                event: event,
+                msg: msg,
+                confirm: confirm,
+                confirmDuration: options.confirmDuration
+            },
+            options.transferList
+        )
+
+        if (confirm) {
+            this.confirmQ.set(options.messageId, 
+                {
+                    timeout: setTimeout(
+                        () => setImmediate(
+                            () => {
+                                if (this.confirmQ.has(options.messageId)) {
+                                    process.nextTick(
+                                        () => this.send(
+                                            event,
+                                            msg,
+                                            options
+                                        )
+                                    )
+                                }
+                            }
+                        ),
+                        retryDelay
+                    )
+                }
+            )
+        }
+
+        return 1
+    }
+
+    /**
+     * 
+     * @param {String} event 
+     * @param {Message} msg 
+     * @param {PostMessageOptions} options 
+     */
+    post(event, msg, options) {
+        return new Promise((resolve, reject) => {
+
+            if (!this.active) {
+                return reject(new ThreadError.ThreadNotActive(this.addressee.name, this.addressee.number))
+            }
+
+            const rejectDelay = options.rejectDelay ?? this.delay.post
+
+            options.messageId = options.messageId || createId()
+
+            this.port.postMessage(
+                {
+                    id: options.messageId,
+                    type: this.MESSAGE_TYPE.POST,
+                    event: event,
+                    msg: msg,
+                },
+                options.transferList
+            )
+
+            this.answerQ.set(options.messageId,
+                {
+                    resolve,
+                    timeout: setTimeout(
+                        () => setImmediate(
+                            () => {
+                                if (this.answerQ.has(options.messageId)) {
+                                    this.answerQ.delete(options.messageId)
+                                    return reject(new ThreadError.TimeoutHasExpired())
+                                }
+                            }
+                        ),
+                        rejectDelay
+                    )
+                }
+            )
+
+            msg = null
+        })
+    }
+
+    /**
      * @private
      */
-    check() {}
+    confirm() {}
 
     /**
      * @private
@@ -317,8 +335,18 @@ class Channel {
 
     /**
      * @private
+     * @param {MessageObject} msg
      */
-    onMessage(msg) {}
+    onMessage(msg) {
+        switch (msg.type) {
+            case this.MESSAGE_TYPE.SEND:
+                return this.onSend(msg)
+            case this.MESSAGE_TYPE.POST:
+                return this.onPost(msg)
+            default:
+                return void 0
+        }
+    }
 
     /**
      * @private
@@ -329,7 +357,17 @@ class Channel {
      * @private
      * @param {SendMessage} msg
      */
-    onSend(msg) {}
+    onSend(msg) {
+        
+        if (msg.confirm) {
+            this.port.postMessage(
+                {
+                    id: msg.id,
+                    type: this.MESSAGE_TYPE.CONFIRM
+                }
+            )
+        }
+    }
 
     /**
      * @private
@@ -345,7 +383,7 @@ class Channel {
     /**
      * @private
      */
-    onCheck(msg) {}
+    onConfirm(msg) {}
 }
 
 
