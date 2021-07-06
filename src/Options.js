@@ -7,12 +7,14 @@ class MainThreadOptions {
      * @param {import('./MainThread').Options} options 
      */
     constructor(options) {
-        this.TERMINATE_CODE = options.TERMINATE_CODE || 1984
+        this.TERMINATE_CODE = options.TERMINATE_CODE ?? 1984
 
         this.delay = {
-            send: options.delay.send || 200,
-            post: options.delay.post || 200,
-            ready: options.delay.ready || 200
+            send:       options.delay.send      ?? 1000,
+            post:       options.delay.post      ?? 200,
+            ready:      options.delay.ready     ?? 5000,
+            init:       options.delay.init      ?? 1000,
+            destroy:    options.delay.destroy   ?? 1000
         }
 
         /**

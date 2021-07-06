@@ -10,9 +10,13 @@ class WorkerThread extends Channel {
     /**
      * @override
      */
-    init() {
-        
-    }
+    async init() {}
+
+    /**
+     * @override
+     * @param {Number} delay 
+     */
+    async destroy(delay) {}
 }
 
 

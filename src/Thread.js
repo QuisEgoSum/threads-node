@@ -1,4 +1,4 @@
-const {EventEmitter} = require('events')
+const events = require('events')
 const ChannelNode = require('./ChannelNode')
 const ThreadOptions = require('./ThreadOptions')
 
@@ -12,41 +12,40 @@ const ThreadOptions = require('./ThreadOptions')
  */
 
 
-class Thread extends EventEmitter {
+class Thread extends events.EventEmitter {
     /**
-     * @param {OptionsThread} options 
-     * @param {MessagePort} mainPort
      */
-    constructor(options) {
+    constructor() {
         super()
+
+        this.inited = false
 
         /**
          * @private
-         * @type {Map.<string, import('./ChannelNode')>}
+         * @type {Map.<String, ChannelNode>}
          */
-        this.nodes = new Map()
-
-        options
-            .channels
-            .forEach(
-                (node, name) => this
-                    .nodes
-                    .set(name, new ChannelNode(name, node, options.delay, this))
-            )
-
-        this.data = options.data
-
-
-
-        const emit = this.emit.bind(this)
+        this.children = new Map()
     }
+
+    /**
+     * @returns {String}
+     */
+    get name() {}
+
+    /**
+     * @returns {String}
+     */
+    get number() {}
 
     init() {}
 
     /**
-     * @returns {import('./ChannelNode')}
+     * @param {String} name 
+     * @returns {ChannelNode}
      */
-    to() {}
+    to(name) {
+        return this.children.get(name)
+    }
 }
 
 

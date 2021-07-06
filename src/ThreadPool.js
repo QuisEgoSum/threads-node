@@ -6,9 +6,21 @@ class ThreadPool extends ChannelNode {
         super()
     }
 
-    init() {}
+    /**
+     * @override
+     */
+    async init() {}
 
-    terminate() {}
+    /**
+     * @param {Number} number 
+     * @param {Number} delay 
+     */
+    async remove(number, delay) {}
+
+    /**
+     * @param {Number} delay 
+     */
+    async destroy(delay) {}
 }
 
 

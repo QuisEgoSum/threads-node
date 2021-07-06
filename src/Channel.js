@@ -10,17 +10,10 @@ const ThreadError = require('./Error')
  * @property {String} name
  * @property {Number} number
  * 
- * @typedef ChannelDelayOptions
- * @type {Object}
- * @property {Number} send
- * @property {Number} post
- * @property {Number} ready
- * @property {Number} init
- * 
  * @typedef ChannelOptions
  * @type {Object}
  * @property {Addressee} addressee
- * @property {ChannelDelayOptions} delay
+ * @property {import('./MainThread').OptionsDelay} delay
  * @property {import('./Thread')} root
  * 
  * @typedef SendQItem
@@ -201,8 +194,6 @@ class Channel {
          * @private
          */
         this.closedListener = () => void (this.active = false)
-
-        // this.root.on(`#channel-init`, () => this.init())
     }
 
     init() {
@@ -239,7 +230,7 @@ class Channel {
      * @param {MessagePort} port 
      * @returns {Channel}
      */
-     setPort(port) {
+    setPort(port) {
         this.port = port
 
         //@ts-ignore
@@ -547,6 +538,11 @@ class Channel {
 
             clearTimeout(confirmQItem.timeout)
         }
+    }
+
+    destroy() {
+        this.removeListeners()
+        this.port.close()
     }
 }
 

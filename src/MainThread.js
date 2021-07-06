@@ -1,6 +1,6 @@
-const AThread = require('./AThread')
+const events = require('events')
 const {MainThreadOptions} = require('./Options')
-const {ThreadDeath} = require('./Error')
+const ThreadError = require('./Error')
 const ThreadPool = require('./ThreadPool')
 
 
@@ -37,14 +37,18 @@ const ThreadPool = require('./ThreadPool')
  * @type {Object}
  * @property {Number} send
  * The time until the message is sent again if there is no confirmation of receipt.
- * Default: 200
+ * Default: 1000
  * @property {Number} post
  * The time until the promise is rejected while waiting for a response to the message.
  * Default: 200
  * @property {Number} ready 
  * The time when the identifiers of the received "send" messages are cached.
  * Used to prevent multiple sending of a single message.
- * Default: 200
+ * Default: 5000
+ * @property {Number} init
+ * Default: 1000
+ * @property {Number} destroy
+ * Default: 1000
  * 
  * @typedef Options
  * @type {Object} 
@@ -62,7 +66,7 @@ const ThreadPool = require('./ThreadPool')
  */
 
 
-class MainThread extends AThread {
+class MainThread extends events.EventEmitter {
     /**
      * @param {Options} options 
      */
@@ -76,9 +80,11 @@ class MainThread extends AThread {
          */
         this.options = new MainThreadOptions(options)
 
-        this.threadPools = options.threads.map(
-            poolOptions => new ThreadPool({...poolOptions, delay: this.options.delay})
-        )
+        /**
+         * @private
+         * @type {Map.<String, ThreadPool>}
+         */
+        this.children = new Map()
 
         this.on('#exit', (code, name, number) => this.threadExit(code, name, number))
     }
@@ -95,18 +101,30 @@ class MainThread extends AThread {
 
     /**
      * @private
-     * @param {*} thread 
+     * @param {Number} code
+     * @param {String} name
+     * @param {Number} number
      */
     async threadExit(code, name, number) {
         if (!this.inited) {
-            this.emit('error', new ThreadDeath(code, name, number))
+            this.emit('error', new ThreadError.ThreadDeathBeforeInitialization(code, name, number))
+
+            await this.to(name).remove(number, this.options.delay.destroy)
+
             return void 0
         }
     }
 
-    terminate() {}
+    /**
+     * @param {String} name 
+     * @param {Number} delay
+     */
+    async remove(name, delay) {}
 
-    remove() {}
+    /**
+     * @param {Number} delay 
+     */
+    async destroy(delay) {}
 }
 
 

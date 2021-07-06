@@ -11,7 +11,10 @@ class AThread extends EventEmitter {
         this.children = new Map()
     }
 
-    to() {}
+    /**
+     * @param {String} name 
+     */
+    to(name) {}
 }
 
 

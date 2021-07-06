@@ -1,34 +1,83 @@
 const Channel = require('./Channel')
 
 
+/**
+ * @typedef Addressees
+ * @type {Object}
+ * @property {String} name
+ * @property {Array.<Number>} numbers
+ * 
+ * @typedef ChannelNodeConstuctorOptions
+ * @type {Object}
+ * @property {import('./MainThread').OptionsDelay} delay
+ * @property {import('./Thread')} root
+ * @property {Addressees} addressees
+ * 
+ * @typedef AddresseeOptions
+ * @type {Object}
+ * @property {Number|'all'|'any'} to
+ */
+
+
 class ChannelNode extends Map {
 
     /**
-     * @param {import('./MainThread').ChannelNodeOptions} nodeOptions 
-     * @param {import('./Thread')} root 
+     * @param {ChannelNodeConstuctorOptions} options 
      */
-    constructor(nodeOptions, root) {
+    constructor({delay, root, addressees}) {
         super()
 
-        this._options = nodeOptions
-        this._root = root
+        /**
+         * @private
+         */
+        this.delay = delay
+
+        /**
+         * @private
+         */
+        this.root = root
+
+        /**
+         * @private
+         */
+        this.addressees = addressees
     }
 
-    _init() {
-        for (let number = 1; number <= this._options.number; number++) {
-            this.set(new Channel(this._options.delay, {number, name: this._options.name}, this._root))
-        }
-    }
+    async init() {}
 
-    init() {
+    /**
+     * @param {String} number 
+     */
+    appendChannel(number) {}
 
-    }
+    /**
+     * @param {Number} number 
+     * @param {MessagePort} port 
+     */
+    setPort(number, port) {}
 
+    /**
+     * @param {any} message 
+     * @param {*} options 
+     */
     post(message, options) {}
 
+    /**
+     * @param {any} message 
+     * @param {*} options 
+     */
     send(message, options) {}
 
-    remove() {}
+    /**
+     * @param {Number} number 
+     * @param {Number} delay 
+     */
+    remove(number, delay) {}
+
+    /**
+     * @param {Number} delay 
+     */
+    destroy(delay) {}
 }
 
 
