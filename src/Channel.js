@@ -16,17 +16,36 @@ const ThreadError = require('./Error')
  * @property {import('./MainThread').OptionsDelay} delay
  * @property {import('./Thread')} root
  * 
- * @typedef SendQItem
+ * @typedef SendOptions
  * @type {Object}
- * @property {MessageId} id 
- * @property {any} [msg]
  * @property {String} event 
+ * @property {any} [data]
  * @property {Number} [retryDelay]
  * @property {Number} [confirmDuration]
  * @property {Array.<MessagePort>} [transferList]
  * 
+ * @typedef Send
+ * @type {Object}
+ * @property {MessageId} id 
+ * @property {String} event 
+ * @property {'send'} type
+ * @property {any} [data]
+ * @property {Number} retryDelay
+ * @property {Boolean} confirm
+ * @property {Number} [confirmDuration]
+ * @property {Array.<MessagePort>} [transferList]
+ * 
+ * @typedef SendMessage
+ * @type {Object}
+ * @property {String} id
+ * @property {String} event
+ * @property {'send'} type
+ * @property {any} data
+ * @property {Boolean} confirm
+ * @property {Number} [confirmDuration]
+ * 
  * @typedef SendQ
- * @type {Array.<SendQItem>}
+ * @type {Array.<Send>}
  * 
  * @typedef ConfirmQItem
  * @type {Object}
@@ -53,28 +72,11 @@ const ThreadError = require('./Error')
  * @typedef {any} Message
  * @typedef {String} MessageEvent
  * 
- * @typedef SendOptions
- * @type {Object}
- * @property {any} [msg]
- * @property {Number} [retryDelay]
- * @property {Number} [confirmDuration]
- * @property {String} [messageId]
- * @property {Array.<MessagePort>} [transferList]
- * 
  * @typedef PostOptions
  * @type {Object}
  * @property {Number} [rejectDelay]
  * @property {String} [messageId]
  * @property {Array.<MessagePort>} [transferList]
- * 
- * @typedef SendMessage
- * @type {Object}
- * @property {String} id
- * @property {'send'} type
- * @property {String} event
- * @property {any} msg
- * @property {Boolean} confirm
- * @property {Number} [confirmDuration]
  * 
  * @typedef PostMessage
  * @type {Object}
@@ -108,18 +110,6 @@ const ThreadError = require('./Error')
  * @property {'answer'} ANSWER
  * @property {'confirm'} CONFIRM
  * @property {'init'} INIT
- * 
- * @typedef SendHandlerCtx
- * @type {Object}
- * @property {Addressee} from
- * 
- * @callback PostAnswerCallback
- * @param {any} msg
- * 
- * @typedef PostHandlerCtx
- * @type {Object}
- * @property {Addressee} from
- * @property {PostAnswerCallback} answer
  */
 
 
@@ -257,30 +247,33 @@ class Channel {
     }
 
     /**
-     * @param {MessageEvent} event 
-     * @param {Message} msg 
-     * @param {SendOptions} options 
+     * @param {SendOptions} options
      * @returns {Number}
      */
-    send(event, msg, options) {
-
+    send(options) {
         const retryDelay = options.retryDelay ?? this.delay.send
-        options.messageId = options.messageId || createId()
 
-        const confirm = retryDelay === 0
-
+        return this._send(
+            {
+                id: createId(),
+                event: options.event,
+                type: this.MESSAGE_TYPE.SEND,
+                data: options.data,
+                retryDelay: retryDelay,
+                confirm: retryDelay === 0,
+                confirmDuration: options.confirmDuration,
+                transferList: options.transferList
+            }
+        )
+    }
+    
+    /**
+     * @param {Send} options 
+     */
+    _send(options) {
         if (!this.active) {
-            if (confirm) {
-                this.sendQ.push(
-                    {
-                        id: options.messageId,
-                        msg: msg,
-                        event: event,
-                        transferList: options.transferList,
-                        retryDelay: options.retryDelay,
-                        confirmDuration: options.confirmDuration
-                    }
-                )
+            if (options.confirm) {
+                this.sendQ.push(options)
 
                 return 2
             }
@@ -288,42 +281,46 @@ class Channel {
             return 0
         }
 
-        this.port.postMessage(
+        this.toSend(
             {
-                id: options.messageId,
-                type: this.MESSAGE_TYPE.SEND,
-                event: event,
-                msg: msg,
-                confirm: confirm,
+                id: options.id,
+                event: options.event,
+                type: options.type,
+                data: options.data,
+                confirm: options.confirm,
                 confirmDuration: options.confirmDuration
             },
             options.transferList
         )
 
-        if (confirm) {
-            this.confirmQ.set(options.messageId, 
+        if (options.confirm) {
+            this.confirmQ.set(options.id,
                 {
                     timeout: setTimeout(
                         () => setImmediate(
                             () => {
-                                if (this.confirmQ.has(options.messageId)) {
+                                if (this.confirmQ.has(options.id)) {
                                     process.nextTick(
-                                        () => this.send(
-                                            event,
-                                            msg,
-                                            options
-                                        )
+                                        () => this._send(options)
                                     )
                                 }
                             }
                         ),
-                        retryDelay
+                        options.retryDelay
                     )
                 }
             )
         }
 
         return 1
+    }
+
+    /**
+     * @param {SendMessage} sendMessage 
+     * @param {Array.<MessagePort>} [transferList] 
+     */
+    toSend(sendMessage, transferList) {
+        return this.port.postMessage(sendMessage, transferList)
     }
 
     /**
@@ -460,16 +457,7 @@ class Channel {
                     this.sendQ.length = 0
 
                     sendQ.forEach(
-                        sendQItem => this.send(
-                            sendQItem.event,
-                            sendQItem.msg,
-                            {
-                                messageId: sendQItem.id,
-                                retryDelay: sendQItem.retryDelay,
-                                confirmDuration: sendQItem.confirmDuration,
-                                transferList: sendQItem.transferList,
-                            }
-                        )
+                        sendQItem => this._send(sendQItem)
                     )
                 }
             }
@@ -489,7 +477,13 @@ class Channel {
             }
         }
 
-        this.root.emit(msg.event, msg.msg, {from: this.addressee})
+        this.root.emit(
+            msg.event,
+            {
+                from: this.addressee,
+                data: msg.data
+            }
+        )
     }
 
     /**
