@@ -2,6 +2,7 @@ const events = require('events')
 const {MainThreadOptions} = require('./Options')
 const ThreadError = require('./Error')
 const ThreadPool = require('./ThreadPool')
+const Interceptor = require('./Interceptor')
 
 
 /**
@@ -92,11 +93,27 @@ class MainThread extends events.EventEmitter {
     async init() {}
 
     /**
-     * @param {String} name
-     * @returns {import('./ThreadPool')}
+     * @param {String} name 
+     * @returns {ThreadPool}
+     */
+    get(name) {
+        return this.children.get(name)
+    }
+
+    /**
+     * @param {String} name 
+     * @returns {Boolean}
+     */
+    has(name) {
+        return this.children.has(name)
+    }
+
+    /**
+     * @param {String} name 
+     * @returns {Interceptor}
      */
     to(name) {
-        return this.children.get(name)
+        return new Interceptor(name, this)
     }
 
     /**
@@ -109,7 +126,7 @@ class MainThread extends events.EventEmitter {
         if (!this.inited) {
             this.emit('error', new ThreadError.ThreadDeathBeforeInitialization(code, name, number))
 
-            await this.to(name).remove(number, this.options.delay.destroy)
+            await this.get(name).remove(number, this.options.delay.destroy)
 
             return void 0
         }

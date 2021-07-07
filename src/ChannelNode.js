@@ -18,15 +18,12 @@ const Channel = require('./Channel')
  * @property {Number|'all'|'any'} to
  */
 
-
-class ChannelNode extends Map {
+class ChannelNode {
 
     /**
      * @param {ChannelNodeConstuctorOptions} options 
      */
     constructor({delay, root, addressees}) {
-        super()
-
         /**
          * @private
          */
@@ -41,6 +38,32 @@ class ChannelNode extends Map {
          * @private
          */
         this.addressees = addressees
+
+        /**
+         * @private 
+         * @type {Map.<Number, Channel>}
+         */
+        this.children = new Map()
+    }
+
+    /**
+     * @param {Number} number 
+     * @returns {Channel}
+     */
+    get(number) {
+        return this.children.get(number)
+    }
+
+    /**
+     * @param {Number} number 
+     * @returns {Boolean}
+     */
+    has(number) {
+        return this.children.has(number)
+    }
+
+    get numbers() {
+        return [...this.addressees.numbers]
     }
 
     async init() {}
@@ -64,9 +87,18 @@ class ChannelNode extends Map {
 
     /**
      * @param {any} message 
-     * @param {*} options 
+     * @param {Array.<Number>} numbers
+     * @param {import('./Channel').SendOptions} options 
+     * @returns {Array.<{number: Number, result: Number}>}
      */
-    send(message, options) {}
+    send(event, message, numbers, options) {
+        return numbers.map(number => {
+            return {
+                number,
+                result: this.children.get(number).send(event, message, options)
+            }
+        })
+    }
 
     /**
      * @param {Number} number 

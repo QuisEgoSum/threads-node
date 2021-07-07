@@ -53,14 +53,15 @@ const ThreadError = require('./Error')
  * @typedef {any} Message
  * @typedef {String} MessageEvent
  * 
- * @typedef SendMessageOptions
+ * @typedef SendOptions
  * @type {Object}
+ * @property {any} [msg]
  * @property {Number} [retryDelay]
  * @property {Number} [confirmDuration]
  * @property {String} [messageId]
  * @property {Array.<MessagePort>} [transferList]
  * 
- * @typedef PostMessageOptions
+ * @typedef PostOptions
  * @type {Object}
  * @property {Number} [rejectDelay]
  * @property {String} [messageId]
@@ -256,10 +257,9 @@ class Channel {
     }
 
     /**
-     * 
      * @param {MessageEvent} event 
      * @param {Message} msg 
-     * @param {SendMessageOptions} options 
+     * @param {SendOptions} options 
      * @returns {Number}
      */
     send(event, msg, options) {
@@ -329,7 +329,7 @@ class Channel {
     /**
      * @param {String} event 
      * @param {Message} msg 
-     * @param {PostMessageOptions} options 
+     * @param {PostOptions} options 
      */
     post(event, msg, options) {
         return new Promise((resolve, reject) => {

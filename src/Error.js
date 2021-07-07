@@ -43,3 +43,18 @@ ThreadError.ThreadNotActive = class ThreadNotActive extends ThreadError {
         this.number = number
     }
 }
+
+ThreadError.ThreadPoolNotExists = class ThreadPoolNotExists extends ThreadError {
+    constructor(name) {
+        super(`The ${name} thread pool not exists`)
+        this.name = name
+    }
+}
+
+ThreadError.ThreadNotExists = class ThreadNotExists extends ThreadError {
+    constructor(name, number) {
+        super(`The ${name} ${number} thread not exists`)
+        this.name = name
+        this.number = number
+    }
+}

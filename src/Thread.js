@@ -1,6 +1,7 @@
 const events = require('events')
 const ChannelNode = require('./ChannelNode')
 const ThreadOptions = require('./ThreadOptions')
+const Interceptor = require('./Interceptor')
 
 
 /**
@@ -14,9 +15,16 @@ const ThreadOptions = require('./ThreadOptions')
 
 class Thread extends events.EventEmitter {
     /**
+     * @param {any} options
+     * @param {MessagePort} port
      */
-    constructor() {
+    constructor(options, port) {
         super()
+
+        /**
+         * @private
+         */
+        this.options = options
 
         this.inited = false
 
@@ -28,23 +36,50 @@ class Thread extends events.EventEmitter {
     }
 
     /**
-     * @returns {String}
+     * @param {String} name 
+     * @returns {ChannelNode}
      */
-    get name() {}
+    get(name) {
+        return this.children.get(name)
+    }
+
+    /**
+     * @param {String} name 
+     * @returns {Boolean}
+     */
+    has(name) {
+        return this.children.has(name)
+    }
 
     /**
      * @returns {String}
      */
-    get number() {}
+    get name() {
+        return this.options.name
+    }
+
+    /**
+     * @returns {Number}
+     */
+    get number() {
+        return this.options.number
+    }
+
+    /**
+     * @returns {any}
+     */
+    get data() {
+        return this.options.data
+    }
 
     init() {}
 
     /**
      * @param {String} name 
-     * @returns {ChannelNode}
+     * @returns {Interceptor}
      */
     to(name) {
-        return this.children.get(name)
+        return new Interceptor(name, this)
     }
 }
 
