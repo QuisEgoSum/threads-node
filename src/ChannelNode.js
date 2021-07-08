@@ -1,4 +1,5 @@
 const Channel = require('./Channel')
+const ThreadError = require('./Error')
 
 
 /**
@@ -13,9 +14,18 @@ const Channel = require('./Channel')
  * @property {import('./Thread')} root
  * @property {Addressees} addressees
  * 
- * @typedef AddresseeOptions
+ * @typedef PostResult
  * @type {Object}
- * @property {Number|'all'|'any'} to
+ * @property {0|1} ok
+ * @property {Number} number
+ * @property {Channel.AnswerEvent} [result]
+ * @property {ThreadError.ThreadNotActive|ThreadError.TimeoutHasExpired|ThreadError.ThreadNotExists} [error]
+ * 
+ * @typedef PostResults
+ * @type {Object}
+ * @property {Number} ok
+ * @property {Number} errors
+ * @property {Array.<PostResult>} results
  */
 
 class ChannelNode {
@@ -49,9 +59,14 @@ class ChannelNode {
     /**
      * @param {Number} number 
      * @returns {Channel}
+     * @throws {ThreadError.ThreadNotExists}
      */
     get(number) {
-        return this.children.get(number)
+        if (this.has(number)) {
+            return this.children.get(number)
+        } else {
+            throw new ThreadError.ThreadNotExists(this.addressees.name, number)
+        }
     }
 
     /**
@@ -66,50 +81,128 @@ class ChannelNode {
         return [...this.addressees.numbers]
     }
 
-    async init() {}
+    /**
+     * @returns {Promise.<void>}
+     * @throws {ThreadError.TimeoutHasExpired}
+     */
+    async init() {
+        this.addressees.numbers.forEach(number => this.appendChannel(number))
+
+        const promises = new Array()
+
+        for (const channel of this.children.values()) {
+            promises.push(channel.init())
+        }
+
+        await Promise.all(promises)
+    }
 
     /**
-     * @param {String} number 
+     * @param {Number} number 
      */
-    appendChannel(number) {}
+    appendChannel(number) {
+        if (!this.has(number)) {
+            this.children.set(number, new Channel(
+                {
+                    delay: this.delay,
+                    addressee: {
+                        number,
+                        name: this.addressees.name
+                    },
+                    root: this.root
+                }
+            ))
+
+            return true
+        }
+
+        return false
+    }
 
     /**
      * @param {Number} number 
      * @param {MessagePort} port 
      */
-    setPort(number, port) {}
+    setPort(number, port) {
+        this.get(number).setPort(port)
+    }
 
     /**
-     * @param {any} message 
-     * @param {*} options 
+     * @param {Channel.PostOptions} options 
+     * @param {Array.<Number>} numbers 
+     * @returns {Promise.<PostResults>}
      */
-    post(message, options) {}
+    async post(options, ...numbers) {
+        const promises = []
+
+        for (const number of numbers) {
+            promises.push(this._post(options, number))
+        }
+
+        const results = await Promise.all(promises)
+
+        const ok = results.filter(result => result.ok).length
+        const errors = results.length - ok
+
+        return {
+            ok: ok,
+            errors: errors,
+            results
+        }
+    }
 
     /**
-     * @param {any} message 
+     * @private 
+     * @param {Channel.PostOptions} options 
+     * @param {Number} number 
+     * @returns {Promise.<PostResult>}
+     */
+    async _post(options, number) {
+        try {
+            const result = await this.get(number).post(options)
+
+            return {
+                ok: 1,
+                number: number,
+                result: result
+            }
+        } catch (error) {
+            return {
+                ok: 0,
+                number,
+                error: error
+            }
+        }
+    }
+
+    /**
+     * @param {Channel.SendOptions} options 
      * @param {Array.<Number>} numbers
-     * @param {import('./Channel').SendOptions} options 
-     * @returns {Array.<{number: Number, result: Number}>}
+     * @returns {Array.<{number: Number, result: 0|1|2}>}
      */
-    send(event, message, numbers, options) {
+    send(options, ...numbers) {
         return numbers.map(number => {
             return {
                 number,
-                result: this.children.get(number).send(event, message, options)
+                result: this.children.get(number).send(options)
             }
         })
     }
 
     /**
      * @param {Number} number 
-     * @param {Number} delay 
      */
-    remove(number, delay) {}
+    remove(number) {
+        this.get(number).destroy()
 
-    /**
-     * @param {Number} delay 
-     */
-    destroy(delay) {}
+        this.children.delete(number)
+    }
+
+    destroy() {
+        this.children.forEach(channel => channel.destroy())
+
+        this.children.clear()
+    }
 }
 
 

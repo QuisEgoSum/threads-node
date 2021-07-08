@@ -1,14 +1,19 @@
 
 
-const ThreadError = module.exports = class ThreadError extends Error {
+class ThreadError extends Error {
     constructor(message) {
         super(message)
     }
 }
 
 ThreadError.TimeoutHasExpired = class TimeoutHasExpired extends ThreadError {
-    constructor() {
+    /**
+     * @param {import('./Channel').Addressee} addressee 
+     */
+    constructor(addressee) {
         super('Timeout has expired')
+        this.name = addressee.name
+        this.number = addressee.number
     }
 }
 
@@ -58,3 +63,6 @@ ThreadError.ThreadNotExists = class ThreadNotExists extends ThreadError {
         this.number = number
     }
 }
+
+
+module.exports = ThreadError

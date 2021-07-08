@@ -95,7 +95,12 @@ const ThreadError = require('./Error')
  * @type {Object}
  * @property {String} id
  * @property {'ANSWER'} type
- * @property {any} msg
+ * @property {any} [data]
+ * 
+ * @typedef AnswerEvent
+ * @type {Object}
+ * @property {any} data 
+ * @property {Addressee} from
  * 
  * @typedef InitMessage
  * @type {Object}
@@ -188,6 +193,10 @@ class Channel {
         this.closedListener = () => void (this.active = false)
     }
 
+    /**
+     * @returns {Promise.<void>}
+     * @throws {ThreadError.TimeoutHasExpired}
+     */
     init() {
         const messageId = createId()
 
@@ -207,7 +216,7 @@ class Channel {
                             () => {
                                 if (this.answerQ.has(messageId)) {
                                     this.answerQ.delete(messageId)
-                                    reject(new ThreadError.TimeoutHasExpired())
+                                    reject(new ThreadError.TimeoutHasExpired(this.addressee))
                                 }
                             }
                         ),
@@ -223,6 +232,8 @@ class Channel {
      * @returns {Channel}
      */
     setPort(port) {
+        this.removeListeners()
+
         this.port = port
 
         //@ts-ignore
@@ -247,7 +258,7 @@ class Channel {
 
     /**
      * @param {SendOptions} options
-     * @returns {Number}
+     * @returns {0|1|2}
      */
     send(options) {
         const retryDelay = options.retryDelay ?? this.delay.send
@@ -324,6 +335,9 @@ class Channel {
 
     /**
      * @param {PostOptions} options 
+     * @returns {Promise.<AnswerEvent>}
+     * @throws {ThreadError.ThreadNotActive}
+     * @throws {ThreadError.TimeoutHasExpired}
      */
     async post(options) {
         return new Promise((resolve, reject) => {
@@ -334,11 +348,11 @@ class Channel {
             const rejectDelay = options.rejectDelay ?? this.delay.post
             const messageId = createId()
 
-            this.port.postMessage(
+            this.toPost(
                 {
                     id: messageId,
-                    type: this.MESSAGE_TYPE.POST,
                     event: options.event,
+                    type: this.MESSAGE_TYPE.POST,
                     data: options.data
                 },
                 options.transferList
@@ -352,7 +366,7 @@ class Channel {
                             () => {
                                 if (this.answerQ.has(messageId)) {
                                     this.answerQ.delete(messageId)
-                                    return reject(new ThreadError.TimeoutHasExpired())
+                                    return reject(new ThreadError.TimeoutHasExpired(this.addressee))
                                 }
                             }
                         ),
@@ -405,16 +419,23 @@ class Channel {
     /**
      * @private
      * @param {String} messageId
-     * @param {any} msg
+     * @param {any} [data]
      */
-    answer(messageId, msg) {
-        this.port.postMessage(
+    answer(messageId, data) {
+        this.toAnswer(
             {
                 id: messageId,
                 type: this.MESSAGE_TYPE.ANSWER,
-                msg: msg
+                data: data
             }
         )
+    }
+
+    /**
+     * @param {AnswerMessage} answerMessage 
+     */
+    toAnswer(answerMessage) {
+        this.port.postMessage(answerMessage)
     }
 
     /**
@@ -499,10 +520,10 @@ class Channel {
             {
                 from: this.addressee,
                 /**
-                 * @param {any} msg 
+                 * @param {any} [data] 
                  * @returns {void}
                  */
-                answer: msg => this.answer(msg.id, msg)
+                answer: data => this.answer(msg.id, data)
             }
         )
     }
@@ -519,7 +540,12 @@ class Channel {
 
             clearTimeout(answerQItem.timeout)
 
-            answerQItem.resolve(msg.msg)
+            answerQItem.resolve(
+                {
+                    data: msg.data,
+                    from: this.addressee
+                }
+            )
         }
     }
 
