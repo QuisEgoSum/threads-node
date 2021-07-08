@@ -28,7 +28,7 @@ const ThreadError = require('./Error')
  * @type {Object}
  * @property {MessageId} id 
  * @property {String} event 
- * @property {'send'} type
+ * @property {'SEND'} type
  * @property {any} [data]
  * @property {Number} retryDelay
  * @property {Boolean} confirm
@@ -39,13 +39,27 @@ const ThreadError = require('./Error')
  * @type {Object}
  * @property {String} id
  * @property {String} event
- * @property {'send'} type
+ * @property {'SEND'} type
  * @property {any} data
  * @property {Boolean} confirm
  * @property {Number} [confirmDuration]
  * 
  * @typedef SendQ
  * @type {Array.<Send>}
+ * 
+ * @typedef PostOptions
+ * @type {Object}
+ * @property {String} event
+ * @property {any} [data]
+ * @property {Number} [rejectDelay]
+ * @property {Array.<MessagePort>} [transferList]
+ * 
+ * @typedef PostMessage
+ * @type {Object}
+ * @property {String} id
+ * @property {String} event
+ * @property {'POST'} type
+ * @property {any} [data]
  * 
  * @typedef ConfirmQItem
  * @type {Object}
@@ -59,7 +73,7 @@ const ThreadError = require('./Error')
  * @typedef AnswerQItem
  * @type {Object}
  * @property {NodeJS.Timeout} timeout
- * @property {ResolveCallback} resolve promise resolve function
+ * @property {ResolveCallback} resolve
  * 
  * @typedef {Map.<MessageId, AnswerQItem>} AnswerQ
  * 
@@ -72,44 +86,31 @@ const ThreadError = require('./Error')
  * @typedef {any} Message
  * @typedef {String} MessageEvent
  * 
- * @typedef PostOptions
- * @type {Object}
- * @property {Number} [rejectDelay]
- * @property {String} [messageId]
- * @property {Array.<MessagePort>} [transferList]
- * 
- * @typedef PostMessage
- * @type {Object}
- * @property {String} id
- * @property {'post'} type
- * @property {String} event
- * @property {any} [msg]
- * 
  * @typedef ConfirmMessage
  * @type {Object}
  * @property {String} id
- * @property {'confirm'} type
+ * @property {'CONFIRM'} type
  * 
  * @typedef AnswerMessage
  * @type {Object}
  * @property {String} id
- * @property {'answer'} type
+ * @property {'ANSWER'} type
  * @property {any} msg
  * 
  * @typedef InitMessage
  * @type {Object}
  * @property {String} id
- * @property {'init'} type
+ * @property {'INIT'} type
  * 
  * @typedef {SendMessage|PostMessage|AnswerMessage|ConfirmMessage|InitMessage} MessageObject
  * 
  * @typedef MESSAGE_TYPE
  * @type {Object}
- * @property {'send'} SEND
- * @property {'post'} POST
- * @property {'answer'} ANSWER
- * @property {'confirm'} CONFIRM
- * @property {'init'} INIT
+ * @property {'SEND'} SEND
+ * @property {'POST'} POST
+ * @property {'ANSWER'} ANSWER
+ * @property {'CONFIRM'} CONFIRM
+ * @property {'INIT'} INIT
  */
 
 
@@ -124,11 +125,11 @@ class Channel {
          * @type {MESSAGE_TYPE}
          */
         this.MESSAGE_TYPE = {
-            SEND: 'send',
-            POST: 'post',
-            ANSWER: 'answer',
-            CONFIRM: 'confirm',
-            INIT: 'init'
+            SEND: 'SEND',
+            POST: 'POST',
+            ANSWER: 'ANSWER',
+            CONFIRM: 'CONFIRM',
+            INIT: 'INIT'
         }
 
         /**
@@ -238,9 +239,7 @@ class Channel {
     removeListeners() {
         if (this.port) {
             this.port.removeEventListener('close',   this.closedListener)
-            if (this.messageListener) {
-                this.port.removeEventListener('message', this.messageListener)
-            }
+            this.port.removeEventListener('message', this.messageListener)
         }
 
         return this
@@ -324,39 +323,35 @@ class Channel {
     }
 
     /**
-     * @param {String} event 
-     * @param {Message} msg 
      * @param {PostOptions} options 
      */
-    post(event, msg, options) {
+    async post(options) {
         return new Promise((resolve, reject) => {
-
             if (!this.active) {
                 return reject(new ThreadError.ThreadNotActive(this.addressee.name, this.addressee.number))
             }
 
             const rejectDelay = options.rejectDelay ?? this.delay.post
-
-            options.messageId = options.messageId || createId()
+            const messageId = createId()
 
             this.port.postMessage(
                 {
-                    id: options.messageId,
+                    id: messageId,
                     type: this.MESSAGE_TYPE.POST,
-                    event: event,
-                    msg: msg,
+                    event: options.event,
+                    data: options.data
                 },
                 options.transferList
             )
 
-            this.answerQ.set(options.messageId,
+            this.answerQ.set(messageId,
                 {
                     resolve,
                     timeout: setTimeout(
                         () => setImmediate(
                             () => {
-                                if (this.answerQ.has(options.messageId)) {
-                                    this.answerQ.delete(options.messageId)
+                                if (this.answerQ.has(messageId)) {
+                                    this.answerQ.delete(messageId)
                                     return reject(new ThreadError.TimeoutHasExpired())
                                 }
                             }
@@ -366,8 +361,16 @@ class Channel {
                 }
             )
 
-            msg = null
+            options = null
         })
+    }
+
+    /**
+     * @param {PostMessage} postMessage 
+     * @param {Array.<MessagePort>} transferList 
+     */
+    toPost(postMessage, transferList) {
+        this.port.postMessage(postMessage, transferList)
     }
 
     /**
@@ -492,7 +495,7 @@ class Channel {
      */
     onPost(msg) {
         this.root.emit(msg.event, 
-            msg.msg,
+            msg.data,
             {
                 from: this.addressee,
                 /**
@@ -513,7 +516,7 @@ class Channel {
             const answerQItem = this.answerQ.get(msg.id)
 
             this.answerQ.delete(msg.id)
-            
+
             clearTimeout(answerQItem.timeout)
 
             answerQItem.resolve(msg.msg)
@@ -536,6 +539,7 @@ class Channel {
 
     destroy() {
         this.removeListeners()
+
         this.port.close()
     }
 }
