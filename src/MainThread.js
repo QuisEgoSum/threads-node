@@ -95,9 +95,14 @@ class MainThread extends events.EventEmitter {
     /**
      * @param {String} name 
      * @returns {ThreadPool}
+     * @throws {ThreadError.ThreadPoolNotExists}
      */
     get(name) {
-        return this.children.get(name)
+        if (this.has(name)) {
+            return this.children.get(name)
+        } else {
+            throw new ThreadError.ThreadPoolNotExists(name)
+        }
     }
 
     /**
@@ -123,6 +128,10 @@ class MainThread extends events.EventEmitter {
      * @param {Number} number
      */
     async threadExit(code, name, number) {
+        if (code === this.options.TERMINATE_CODE) {
+            return void 0
+        }
+
         if (!this.inited) {
             this.emit('error', new ThreadError.ThreadDeathBeforeInitialization(code, name, number))
 
@@ -130,6 +139,9 @@ class MainThread extends events.EventEmitter {
 
             return void 0
         }
+
+
+
     }
 
     /**

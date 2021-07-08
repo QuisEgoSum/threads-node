@@ -1,25 +1,29 @@
 const events = require('events')
 const ChannelNode = require('./ChannelNode')
-const ThreadOptions = require('./ThreadOptions')
+const Options = require('./Options')
 const Interceptor = require('./Interceptor')
+const ThreadError = require('./Error')
 
 
 /**
  * @typedef OptionsThread
  * @type {Object}
- * @property {*} data
+ * @property {any} data
  * @property {Map.<string, Map.<number, MessagePort>>} channels
  * @property {import('./MainThread').OptionsDelay} delay
+ * @property {import('./Channel').Addressee} addressee
  */
 
 
 class Thread extends events.EventEmitter {
     /**
-     * @param {any} options
+     * @param {OptionsThread} options
      * @param {MessagePort} port
      */
     constructor(options, port) {
         super()
+
+        options.channels.set('main', new Map([[1, port]]))
 
         /**
          * @private
@@ -38,9 +42,14 @@ class Thread extends events.EventEmitter {
     /**
      * @param {String} name 
      * @returns {ChannelNode}
+     * @throws {ThreadError.ThreadPoolNotExists}
      */
     get(name) {
-        return this.children.get(name)
+        if (this.has(name)) {
+            return this.children.get(name)
+        } else {
+            throw new ThreadError.ThreadPoolNotExists(name)
+        }
     }
 
     /**
@@ -55,14 +64,14 @@ class Thread extends events.EventEmitter {
      * @returns {String}
      */
     get name() {
-        return this.options.name
+        return this.options.addressee.name
     }
 
     /**
      * @returns {Number}
      */
     get number() {
-        return this.options.number
+        return this.options.addressee.number
     }
 
     /**
@@ -72,7 +81,13 @@ class Thread extends events.EventEmitter {
         return this.options.data
     }
 
-    init() {}
+    async init() {
+        if (this.inited) {
+            return void 0
+        }
+
+
+    }
 
     /**
      * @param {String} name 

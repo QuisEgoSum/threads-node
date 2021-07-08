@@ -34,15 +34,11 @@ class Interceptor {
      * @throws {ThreadError.ThreadPoolNotExists} 
      */
     and(name) {
-        if (this.root.has(name)) {
-            this.lastTarget = name
+        this.lastTarget = name
 
-            this.targets.set(name, new Set(this.root.get(name).numbers))
+        this.targets.set(name, new Set(this.root.get(name).numbers))
 
-            return this
-        } else {
-            throw new ThreadError.ThreadPoolNotExists(name)
-        }
+        return this
     }
 
     /**
@@ -84,18 +80,16 @@ class Interceptor {
     }
 
     /**
-     * @param {String} event
-     * @param {any} message 
      * @param {import('./Channel').SendOptions} options 
      */
-    send(event, message, options) {
+    send(options) {
         const result = []
 
         for (const [name, numbers] of this.targets.entries()) {
             result.push(
                 {
                     name: name,
-                    result: this.root.get(name).send(event, message, Array.from(numbers), options)
+                    result: this.root.get(name).send(options, ...Array.from(numbers))
                 }
             )
         }
@@ -103,7 +97,12 @@ class Interceptor {
         return result
     }
 
-    async post() {}
+    /**
+     * @param {import('./Channel').PostOptions} options 
+     */
+    async post(options) {
+
+    }
 }
 
 

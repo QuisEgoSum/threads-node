@@ -169,7 +169,7 @@ class ChannelNode {
         } catch (error) {
             return {
                 ok: 0,
-                number,
+                number: number,
                 error: error
             }
         }
